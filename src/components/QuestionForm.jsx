@@ -1,18 +1,13 @@
 import { useState, useEffect } from 'react'
-import { stdHints } from '../lib/gameLogic'
-import { processImageFile } from '../lib/gameLogic'
+import { stdHints, QUESTION_TYPE_LABELS, processImageFile } from '../lib/gameLogic'
 
 const SVG_TYPES = ['vuong', 'can', 'deu', 'thuong', 'tu', 'vuongcan']
 const SVG_LABELS = {
-  vuong: 'Tam giác vuông',
-  can: 'Tam giác cân',
-  deu: 'Tam giác đều',
-  vuongcan: 'Tam giác vuông cân',
-  tu: 'Tam giác tù',
-  thuong: 'Tam giác thường',
+  vuong: 'Tam giác vuông', can: 'Tam giác cân', deu: 'Tam giác đều',
+  vuongcan: 'Tam giác vuông cân', tu: 'Tam giác tù', thuong: 'Tam giác thường',
 }
 
-const EXPLANATION_OPTIONS = [
+const MATH_EXPLANATION_OPTIONS = [
   { value: 'tong3goc', label: 'Tổng 3 góc bằng 180°' },
   { value: 'tamgiacvuong', label: 'Tam giác vuông (2 góc nhọn = 90°)' },
   { value: 'tamgiacdeu', label: 'Tam giác đều (mỗi góc 60°)' },
@@ -23,28 +18,72 @@ const EXPLANATION_OPTIONS = [
 export default function QuestionForm({ testId, question, onSave, onClose }) {
   const isEditing = !!question
 
-  const [type, setType] = useState(question?.type || 'input')
+  const [type, setType] = useState(question?.type || 'multiple_choice')
   const [questionText, setQuestionText] = useState(question?.question_text || '')
-  const [answerInput, setAnswerInput] = useState(question?.answer || '')
-  const [explanationKey, setExplanationKey] = useState(question?.explanation_key || 'tong3goc')
-  const [imageMode, setImageMode] = useState(question?.image_mode || 'svg')
-  const [svgAnswer, setSvgAnswer] = useState(question?.answer || 'vuong')
   const [hints, setHints] = useState(question?.hints || ['', '', ''])
   const [saving, setSaving] = useState(false)
+
+  // === multiple_choice ===
+  const [mcOptions, setMcOptions] = useState(question?.options || ['', '', '', ''])
+  const [mcAnswer, setMcAnswer] = useState(question?.answer || '0') // index as string
+
+  // === fill_text ===
+  const [fillAnswer, setFillAnswer] = useState(question?.answer || '')
+
+  // === true_false ===
+  const [tfAnswer, setTfAnswer] = useState(question?.answer || 'true')
+
+  // === ordering ===
+  const [orderItems, setOrderItems] = useState(
+    question?.type === 'ordering' && question?.options
+      ? question.options
+      : ['', '', '', '']
+  )
+
+  // === image (cũ) ===
+  const [imageMode, setImageMode] = useState(question?.image_mode || 'svg')
+  const [svgAnswer, setSvgAnswer] = useState(question?.answer || 'vuong')
   const [imgFiles, setImgFiles] = useState({ correct: null, wrong1: null, wrong2: null })
 
-  // Auto-fill hints when explanation changes
+  // === input (toán cũ) ===
+  const [inputAnswer, setInputAnswer] = useState(question?.answer || '')
+  const [explanationKey, setExplanationKey] = useState(question?.explanation_key || 'tong3goc')
+
+  // Init from question when editing
   useEffect(() => {
-    const key = type === 'input' ? explanationKey : 'image'
-    if (stdHints[key]) {
-      setHints([stdHints[key][0], stdHints[key][1], hints[2]])
+    if (!question) return
+    setType(question.type)
+    setQuestionText(question.question_text)
+    setHints(question.hints || ['', '', ''])
+
+    switch (question.type) {
+      case 'multiple_choice':
+        setMcOptions(question.options || ['', '', '', ''])
+        setMcAnswer(question.answer || '0')
+        break
+      case 'fill_text':
+        setFillAnswer(question.answer || '')
+        break
+      case 'true_false':
+        setTfAnswer(question.answer || 'true')
+        break
+      case 'ordering':
+        setOrderItems(question.options || ['', '', '', ''])
+        break
+      case 'image':
+        setImageMode(question.image_mode || 'svg')
+        setSvgAnswer(question.answer || 'vuong')
+        break
+      case 'input':
+        setInputAnswer(question.answer || '')
+        setExplanationKey(question.explanation_key || 'tong3goc')
+        break
     }
-  }, [explanationKey, type])
+  }, [question])
 
   function handleTypeChange(newType) {
     setType(newType)
-    const key = newType === 'input' ? explanationKey : 'image'
-    setHints([stdHints[key][0], stdHints[key][1], ''])
+    setHints(['', '', ''])
   }
 
   async function handleSave() {
@@ -56,57 +95,87 @@ export default function QuestionForm({ testId, question, onSave, onClose }) {
         test_id: testId,
         type,
         question_text: questionText,
-        hints,
+        hints: hints.filter((h, i) => i === 0 || h), // keep at least slot 0
         sort_order: question?.sort_order || Date.now(),
+        // clear fields by default
+        explanation_key: null,
+        image_mode: null,
+        triangle_type: null,
+        options: null,
       }
-
       if (isEditing) qData.id = question.id
 
-      if (type === 'input') {
-        const a = parseInt(answerInput)
-        if (isNaN(a)) { setSaving(false); return alert('Vui lòng nhập đáp án số!') }
-        qData.answer = String(a)
-        qData.explanation_key = explanationKey
-        qData.image_mode = null
-        qData.triangle_type = 'thuong'
-        qData.options = null
-      } else {
-        qData.explanation_key = 'image'
-        qData.image_mode = imageMode
-
-        if (imageMode === 'svg') {
-          qData.answer = svgAnswer
-          qData.triangle_type = svgAnswer
-          const opts = SVG_TYPES.filter((x) => x !== svgAnswer).sort(() => 0.5 - Math.random()).slice(0, 2)
-          opts.push(svgAnswer)
-          qData.options = opts.sort(() => 0.5 - Math.random())
-        } else {
-          // Upload mode
-          const { correct, wrong1, wrong2 } = imgFiles
-          if (!correct || !wrong1 || !wrong2) {
-            if (isEditing && question.image_mode === 'upload') {
-              // keep old images
-              qData.answer = question.answer
-              qData.options = question.options
-            } else {
-              setSaving(false)
-              return alert('Vui lòng tải lên đủ 3 ảnh (1 đúng, 2 sai)!')
-            }
+      switch (type) {
+        case 'multiple_choice': {
+          const cleaned = mcOptions.map(o => o.trim()).filter(Boolean)
+          if (cleaned.length < 2) { setSaving(false); return alert('Cần ít nhất 2 phương án!') }
+          const ansIdx = parseInt(mcAnswer)
+          if (isNaN(ansIdx) || ansIdx >= cleaned.length) { setSaving(false); return alert('Chọn đáp án đúng!') }
+          qData.options = cleaned
+          qData.answer = String(ansIdx)
+          break
+        }
+        case 'fill_text': {
+          if (!fillAnswer.trim()) { setSaving(false); return alert('Nhập đáp án!') }
+          qData.answer = fillAnswer.trim()
+          break
+        }
+        case 'true_false': {
+          qData.answer = tfAnswer
+          qData.options = ['Đúng', 'Sai']
+          break
+        }
+        case 'ordering': {
+          const cleaned = orderItems.map(o => o.trim()).filter(Boolean)
+          if (cleaned.length < 2) { setSaving(false); return alert('Cần ít nhất 2 mục để sắp xếp!') }
+          // answer = mảng thứ tự đúng (JSON), options = mảng đã xáo trộn
+          qData.answer = JSON.stringify(cleaned) // thứ tự đúng
+          qData.options = [...cleaned].sort(() => 0.5 - Math.random())
+          break
+        }
+        case 'image': {
+          qData.explanation_key = 'image'
+          qData.image_mode = imageMode
+          if (imageMode === 'svg') {
+            qData.answer = svgAnswer
+            qData.triangle_type = svgAnswer
+            const opts = SVG_TYPES.filter(x => x !== svgAnswer).sort(() => 0.5 - Math.random()).slice(0, 2)
+            opts.push(svgAnswer)
+            qData.options = opts.sort(() => 0.5 - Math.random())
           } else {
-            const b64c = await processImageFile(correct)
-            const b64w1 = await processImageFile(wrong1)
-            const b64w2 = await processImageFile(wrong2)
-            if (!b64c || !b64w1 || !b64w2) { setSaving(false); return alert('Lỗi xử lý ảnh!') }
-            qData.answer = b64c
-            qData.options = [b64c, b64w1, b64w2].sort(() => 0.5 - Math.random())
+            const { correct, wrong1, wrong2 } = imgFiles
+            if (!correct || !wrong1 || !wrong2) {
+              if (isEditing && question.image_mode === 'upload') {
+                qData.answer = question.answer
+                qData.options = question.options
+              } else {
+                setSaving(false); return alert('Tải lên đủ 3 ảnh!')
+              }
+            } else {
+              const [b64c, b64w1, b64w2] = await Promise.all([
+                processImageFile(correct), processImageFile(wrong1), processImageFile(wrong2)
+              ])
+              if (!b64c || !b64w1 || !b64w2) { setSaving(false); return alert('Lỗi xử lý ảnh!') }
+              qData.answer = b64c
+              qData.options = [b64c, b64w1, b64w2].sort(() => 0.5 - Math.random())
+            }
           }
+          break
+        }
+        case 'input': {
+          const a = parseInt(inputAnswer)
+          if (isNaN(a)) { setSaving(false); return alert('Nhập đáp án số!') }
+          qData.answer = String(a)
+          qData.explanation_key = explanationKey
+          qData.triangle_type = 'thuong'
+          break
         }
       }
 
       await onSave(qData)
       onClose()
     } catch (err) {
-      alert('Lỗi lưu câu hỏi: ' + err.message)
+      alert('Lỗi: ' + err.message)
     } finally {
       setSaving(false)
     }
@@ -119,139 +188,195 @@ export default function QuestionForm({ testId, question, onSave, onClose }) {
           {isEditing ? 'Chỉnh Sửa Câu Hỏi' : 'Thêm Câu Hỏi Mới'}
         </h2>
 
-        {/* Loại câu hỏi */}
+        {/* 1. Loại câu hỏi */}
         <div className="form-group">
           <label>1. Loại câu hỏi:</label>
           <select className="form-control" value={type} onChange={(e) => handleTypeChange(e.target.value)}>
-            <option value="input">Nhập số đo độ (Cần giải thích quy luật)</option>
-            <option value="image">Chọn hình ảnh đúng (Không cần giải thích)</option>
+            {Object.entries(QUESTION_TYPE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
           </select>
         </div>
 
-        {/* Nội dung đề bài */}
+        {/* 2. Nội dung đề bài */}
         <div className="form-group">
           <label>2. Nội dung đề bài:</label>
-          <input
-            type="text"
+          <textarea
             className="form-control"
+            rows={3}
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
-            placeholder="VD: Góc A = 60°, góc B = 40°. Tính góc C?"
+            placeholder={
+              type === 'ordering' ? 'VD: Sắp xếp các bước giải theo thứ tự đúng'
+              : type === 'true_false' ? 'VD: Tổng 3 góc trong tam giác bằng 180°'
+              : type === 'multiple_choice' ? 'VD: Thủ đô của Việt Nam là gì?'
+              : type === 'fill_text' ? 'VD: 2 + 2 = ___'
+              : 'VD: Góc A = 60°, góc B = 40°. Tính góc C?'
+            }
           />
         </div>
 
-        {/* Đáp án - Input */}
-        {type === 'input' && (
-          <>
-            <div className="form-group">
-              <label>3. Đáp án đúng (Chỉ nhập số):</label>
-              <input
-                type="number"
-                className="form-control"
-                value={answerInput}
-                onChange={(e) => setAnswerInput(e.target.value)}
-                placeholder="VD: 80"
-              />
+        {/* 3. Đáp án theo loại */}
+        <div style={{ background: '#f0f7ff', padding: 16, borderRadius: 10, marginBottom: 16, border: '2px solid #d0e3f7' }}>
+          <label style={{ fontWeight: 'bold', color: 'var(--text)', fontSize: 16, marginBottom: 8, display: 'block' }}>
+            3. Cài đặt đáp án:
+          </label>
+
+          {/* TRẮC NGHIỆM */}
+          {type === 'multiple_choice' && (
+            <div>
+              <p style={{ fontSize: 13, color: '#666', margin: '0 0 10px' }}>Nhập các phương án, tích chọn đáp án đúng.</p>
+              {mcOptions.map((opt, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <input
+                    type="radio"
+                    name="mcAnswer"
+                    checked={mcAnswer === String(i)}
+                    onChange={() => setMcAnswer(String(i))}
+                    style={{ width: 18, height: 18, accentColor: 'var(--success)' }}
+                  />
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ flex: 1 }}
+                    value={opt}
+                    onChange={(e) => {
+                      const n = [...mcOptions]; n[i] = e.target.value; setMcOptions(n)
+                    }}
+                    placeholder={`Phương án ${String.fromCharCode(65 + i)}`}
+                  />
+                  {mcOptions.length > 2 && (
+                    <button type="button" onClick={() => {
+                      const n = mcOptions.filter((_, j) => j !== i)
+                      setMcOptions(n)
+                      if (parseInt(mcAnswer) >= n.length) setMcAnswer(String(n.length - 1))
+                      else if (parseInt(mcAnswer) > i) setMcAnswer(String(parseInt(mcAnswer) - 1))
+                    }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#dc3545' }}>✕</button>
+                  )}
+                </div>
+              ))}
+              {mcOptions.length < 6 && (
+                <button type="button" className="btn-small btn-success" style={{ marginTop: 4, fontSize: 13 }}
+                  onClick={() => setMcOptions([...mcOptions, ''])}>+ Thêm phương án</button>
+              )}
             </div>
-            <div className="form-group">
-              <label>4. Giải thích đúng (Quy luật Toán học):</label>
-              <select
-                className="form-control"
-                value={explanationKey}
-                onChange={(e) => setExplanationKey(e.target.value)}
-              >
-                {EXPLANATION_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
+          )}
+
+          {/* ĐIỀN ĐÁP ÁN */}
+          {type === 'fill_text' && (
+            <div>
+              <p style={{ fontSize: 13, color: '#666', margin: '0 0 8px' }}>Nhập đáp án đúng. Hệ thống sẽ so sánh không phân biệt hoa/thường.</p>
+              <input type="text" className="form-control" value={fillAnswer} onChange={(e) => setFillAnswer(e.target.value)} placeholder="VD: Hà Nội" />
+            </div>
+          )}
+
+          {/* ĐÚNG / SAI */}
+          {type === 'true_false' && (
+            <div style={{ display: 'flex', gap: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: tfAnswer === 'true' ? '3px solid var(--success)' : '2px solid #ccc', background: tfAnswer === 'true' ? '#e8f5e9' : 'white' }}>
+                <input type="radio" name="tf" checked={tfAnswer === 'true'} onChange={() => setTfAnswer('true')} /> Đúng
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: tfAnswer === 'false' ? '3px solid var(--error)' : '2px solid #ccc', background: tfAnswer === 'false' ? '#fff0f3' : 'white' }}>
+                <input type="radio" name="tf" checked={tfAnswer === 'false'} onChange={() => setTfAnswer('false')} /> Sai
+              </label>
+            </div>
+          )}
+
+          {/* SẮP XẾP THỨ TỰ */}
+          {type === 'ordering' && (
+            <div>
+              <p style={{ fontSize: 13, color: '#666', margin: '0 0 8px' }}>Nhập các mục <b>theo thứ tự đúng</b>. Hệ thống sẽ tự xáo trộn khi hiển thị cho học sinh.</p>
+              {orderItems.map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontWeight: 'bold', color: 'var(--secondary)', width: 24 }}>{i + 1}.</span>
+                  <input type="text" className="form-control" style={{ flex: 1 }} value={item}
+                    onChange={(e) => { const n = [...orderItems]; n[i] = e.target.value; setOrderItems(n) }}
+                    placeholder={`Bước ${i + 1}`}
+                  />
+                  {orderItems.length > 2 && (
+                    <button type="button" onClick={() => setOrderItems(orderItems.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#dc3545' }}>✕</button>
+                  )}
+                </div>
+              ))}
+              {orderItems.length < 8 && (
+                <button type="button" className="btn-small btn-success" style={{ marginTop: 4, fontSize: 13 }}
+                  onClick={() => setOrderItems([...orderItems, ''])}>+ Thêm mục</button>
+              )}
+            </div>
+          )}
+
+          {/* CHỌN HÌNH */}
+          {type === 'image' && (
+            <div>
+              <select className="form-control" value={imageMode} onChange={(e) => setImageMode(e.target.value)} style={{ marginBottom: 10 }}>
+                <option value="svg">Hình vẽ Toán học của hệ thống</option>
+                <option value="upload">Tải ảnh lên từ máy</option>
               </select>
+              {imageMode === 'svg' && (
+                <div>
+                  <label>Đáp án đúng:</label>
+                  <select className="form-control" value={svgAnswer} onChange={(e) => setSvgAnswer(e.target.value)}>
+                    {SVG_TYPES.map(t => <option key={t} value={t}>{SVG_LABELS[t]}</option>)}
+                  </select>
+                </div>
+              )}
+              {imageMode === 'upload' && (
+                <div style={{ background: '#fff3e0', padding: 12, borderRadius: 8 }}>
+                  <p style={{ fontSize: 13, color: '#888', margin: '0 0 8px' }}>Tải 3 ảnh (1 đúng + 2 sai).</p>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 14, color: 'var(--success)' }}>Ảnh ĐÚNG:</label>
+                    <input type="file" accept="image/*" className="form-control" style={{ padding: 5 }}
+                      onChange={(e) => setImgFiles(p => ({ ...p, correct: e.target.files[0] }))} />
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 14, color: 'var(--error)' }}>Ảnh SAI 1:</label>
+                    <input type="file" accept="image/*" className="form-control" style={{ padding: 5 }}
+                      onChange={(e) => setImgFiles(p => ({ ...p, wrong1: e.target.files[0] }))} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 14, color: 'var(--error)' }}>Ảnh SAI 2:</label>
+                    <input type="file" accept="image/*" className="form-control" style={{ padding: 5 }}
+                      onChange={(e) => setImgFiles(p => ({ ...p, wrong2: e.target.files[0] }))} />
+                  </div>
+                </div>
+              )}
             </div>
-          </>
-        )}
+          )}
 
-        {/* Đáp án - Image */}
-        {type === 'image' && (
-          <div className="form-group">
-            <label>3. Nguồn hình ảnh minh họa:</label>
-            <select className="form-control" value={imageMode} onChange={(e) => setImageMode(e.target.value)}>
-              <option value="svg">Sử dụng Hình vẽ Toán học của hệ thống</option>
-              <option value="upload">Tải ảnh lên từ máy tính/điện thoại</option>
-            </select>
-
-            {imageMode === 'svg' && (
-              <div style={{ marginTop: 10 }}>
-                <label>Đáp án đúng (Hình ảnh cần chọn):</label>
-                <select className="form-control" value={svgAnswer} onChange={(e) => setSvgAnswer(e.target.value)}>
-                  {SVG_TYPES.map((t) => (
-                    <option key={t} value={t}>{SVG_LABELS[t]}</option>
-                  ))}
+          {/* NHẬP SỐ (TOÁN) */}
+          {type === 'input' && (
+            <div>
+              <div className="form-group" style={{ marginBottom: 8 }}>
+                <label>Đáp án đúng (số):</label>
+                <input type="number" className="form-control" value={inputAnswer} onChange={(e) => setInputAnswer(e.target.value)} placeholder="80" />
+              </div>
+              <div className="form-group">
+                <label>Giải thích đúng:</label>
+                <select className="form-control" value={explanationKey} onChange={(e) => setExplanationKey(e.target.value)}>
+                  {MATH_EXPLANATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
-            )}
+            </div>
+          )}
+        </div>
 
-            {imageMode === 'upload' && (
-              <div style={{ marginTop: 10, background: '#fff3e0', padding: 15, borderRadius: 8 }}>
-                <p style={{ fontSize: 13, color: '#888', marginTop: 0 }}>
-                  Hệ thống sẽ tự động thu nhỏ ảnh.
-                  {isEditing && question.image_mode === 'upload' && ' (Để trống nếu muốn giữ ảnh cũ)'}
-                </p>
-                <div style={{ marginBottom: 10 }}>
-                  <label style={{ fontSize: 14, color: 'var(--success)' }}>✅ Ảnh ĐÚNG (Đáp án):</label>
-                  <input type="file" accept="image/*" className="form-control" style={{ padding: 5 }}
-                    onChange={(e) => setImgFiles((p) => ({ ...p, correct: e.target.files[0] }))} />
-                </div>
-                <div style={{ marginBottom: 10 }}>
-                  <label style={{ fontSize: 14, color: 'var(--error)' }}>❌ Ảnh SAI số 1:</label>
-                  <input type="file" accept="image/*" className="form-control" style={{ padding: 5 }}
-                    onChange={(e) => setImgFiles((p) => ({ ...p, wrong1: e.target.files[0] }))} />
-                </div>
-                <div>
-                  <label style={{ fontSize: 14, color: 'var(--error)' }}>❌ Ảnh SAI số 2:</label>
-                  <input type="file" accept="image/*" className="form-control" style={{ padding: 5 }}
-                    onChange={(e) => setImgFiles((p) => ({ ...p, wrong2: e.target.files[0] }))} />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Gợi ý */}
+        {/* 4. Gợi ý */}
         <div className="hint-group">
-          <label style={{ color: 'var(--primary)', fontSize: 18 }}>
-            {type === 'input' ? '5.' : '4.'} Cài đặt Gợi ý (Scaffolding):
-          </label>
-          <p style={{ fontSize: 14, color: '#666', marginTop: 0 }}>
-            Gợi ý hướng dẫn tư duy, <b>không đưa sẵn phép tính hoặc đáp án</b>.
-          </p>
-          <input
-            type="text"
-            className="form-control"
-            style={{ marginBottom: 8 }}
-            placeholder="Lượt 1 (Nhắc kiến thức chung)..."
-            value={hints[0]}
-            onChange={(e) => setHints([e.target.value, hints[1], hints[2]])}
-          />
-          <input
-            type="text"
-            className="form-control"
-            style={{ marginBottom: 8 }}
-            placeholder="Lượt 2 (Nhắc rõ quy luật)..."
-            value={hints[1]}
-            onChange={(e) => setHints([hints[0], e.target.value, hints[2]])}
-          />
-          <input
-            type="text"
-            className="form-control"
-            placeholder="Lượt 3 (Hướng dẫn tư duy thao tác)..."
-            style={{ borderColor: 'var(--error)' }}
-            value={hints[2]}
-            onChange={(e) => setHints([hints[0], hints[1], e.target.value])}
-          />
+          <label style={{ color: 'var(--primary)', fontSize: 16 }}>4. Gợi ý khi trả lời sai (tùy chọn):</label>
+          <p style={{ fontSize: 13, color: '#666', marginTop: 0 }}>Gợi ý hướng dẫn tư duy, <b>không đưa sẵn đáp án</b>.</p>
+          {[0, 1, 2].map(i => (
+            <input key={i} type="text" className="form-control"
+              style={{ marginBottom: i < 2 ? 8 : 0, borderColor: i === 2 ? 'var(--error)' : undefined }}
+              placeholder={`Gợi ý ${i + 1}...`}
+              value={hints[i] || ''}
+              onChange={(e) => { const n = [...hints]; n[i] = e.target.value; setHints(n) }}
+            />
+          ))}
         </div>
 
         <div style={{ textAlign: 'right', marginTop: 20 }}>
-          <button className="btn-small btn-cancel" onClick={onClose} style={{ marginRight: 8 }}>
-            Hủy bỏ
-          </button>
+          <button className="btn-small btn-cancel" onClick={onClose} style={{ marginRight: 8 }}>Hủy</button>
           <button className="btn-small btn-success" onClick={handleSave} disabled={saving}>
             {saving ? 'Đang lưu...' : 'Lưu Câu Hỏi'}
           </button>

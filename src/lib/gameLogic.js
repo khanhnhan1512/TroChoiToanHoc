@@ -26,6 +26,25 @@ export const stdHints = {
   ],
 }
 
+// ===== NHÃN LOẠI CÂU HỎI =====
+export const QUESTION_TYPE_LABELS = {
+  multiple_choice: 'Trắc nghiệm',
+  fill_text: 'Điền đáp án',
+  true_false: 'Đúng / Sai',
+  ordering: 'Sắp xếp thứ tự',
+  image: 'Chọn hình ảnh',
+  input: 'Nhập số (Toán)',
+}
+
+export const QUESTION_TYPE_COLORS = {
+  multiple_choice: '#6c63ff',
+  fill_text: '#00b894',
+  true_false: '#e17055',
+  ordering: '#0984e3',
+  image: '#8ecae6',
+  input: '#ffb703',
+}
+
 // ===== VẼ TAM GIÁC SVG =====
 export function generateTriangleSVG(type, w = 200, h = 150) {
   let pathD = ''
@@ -66,39 +85,49 @@ export function formatTime(seconds) {
 
 // ===== XÁC NHẬN ĐÁP ÁN =====
 export function evaluateAnswer(question, userAnswer, userExplanation) {
-  if (question.type === 'image') {
-    return {
-      isCorrect: userAnswer === question.answer,
-      expCorrect: true,
+  switch (question.type) {
+    case 'multiple_choice':
+      return { isCorrect: userAnswer === question.answer, expCorrect: true }
+
+    case 'fill_text':
+      // So sánh không phân biệt hoa/thường, bỏ khoảng trắng thừa
+      return {
+        isCorrect: String(userAnswer).trim().toLowerCase() === String(question.answer).trim().toLowerCase(),
+        expCorrect: true,
+      }
+
+    case 'true_false':
+      return { isCorrect: userAnswer === question.answer, expCorrect: true }
+
+    case 'ordering': {
+      // userAnswer = mảng đã sắp xếp, answer = mảng đáp án đúng (jsonb string)
+      const correctOrder = typeof question.answer === 'string' ? JSON.parse(question.answer) : question.answer
+      const isCorrect = Array.isArray(userAnswer) && Array.isArray(correctOrder)
+        && userAnswer.length === correctOrder.length
+        && userAnswer.every((v, i) => v === correctOrder[i])
+      return { isCorrect, expCorrect: true }
     }
-  } else {
-    const uAns = parseInt(userAnswer)
-    return {
-      isCorrect: uAns === parseInt(question.answer),
-      expCorrect: userExplanation === question.explanation_key,
+
+    case 'image':
+      return { isCorrect: userAnswer === question.answer, expCorrect: true }
+
+    case 'input': {
+      const uAns = parseInt(userAnswer)
+      return {
+        isCorrect: uAns === parseInt(question.answer),
+        expCorrect: userExplanation === question.explanation_key,
+      }
     }
+
+    default:
+      return { isCorrect: false, expCorrect: true }
   }
 }
 
-// ===== TRỘN CÂU HỎI (tối đa 20, ~17 nhập / 3 hình) =====
-export function buildSessionQuestions(questions) {
-  const imgQs = questions.filter((q) => q.type === 'image').sort(() => 0.5 - Math.random())
-  const inpQs = questions.filter((q) => q.type === 'input').sort(() => 0.5 - Math.random())
-
-  let pool = []
-  let imgCount = 0
-
-  while (imgCount < 3 && imgQs.length > 0 && pool.length < 20) {
-    pool.push(imgQs.pop())
-    imgCount++
-  }
-  while (pool.length < 20) {
-    if (inpQs.length > 0) pool.push(inpQs.pop())
-    else if (imgQs.length > 0) pool.push(imgQs.pop())
-    else break
-  }
-
-  return pool.slice(0, 20).sort(() => 0.5 - Math.random())
+// ===== TRỘN CÂU HỎI =====
+export function buildSessionQuestions(questions, maxCount = 20) {
+  const shuffled = [...questions].sort(() => 0.5 - Math.random())
+  return shuffled.slice(0, maxCount)
 }
 
 // ===== NÉN ẢNH UPLOAD =====
