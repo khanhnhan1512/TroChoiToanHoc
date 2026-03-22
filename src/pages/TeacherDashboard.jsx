@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useConfirm } from '../components/ConfirmDialog'
 import {
-  getSubjects, createSubject, updateSubject, deleteSubject,
+  getGrades, getSubjects, createSubject, updateSubject, deleteSubject,
   getTests, createTest, updateTest, deleteTest, togglePublish,
 } from '../hooks/useTests'
 
@@ -12,6 +13,7 @@ export default function TeacherDashboard() {
   const { session, signOut } = useAuth()
   const navigate = useNavigate()
 
+  const [grades, setGrades] = useState([])
   const [subjects, setSubjects] = useState([])
   const [tests, setTests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -20,6 +22,7 @@ export default function TeacherDashboard() {
   const [showSubjForm, setShowSubjForm] = useState(false)
   const [subjName, setSubjName] = useState('')
   const [subjIcon, setSubjIcon] = useState('📚')
+  const [subjGradeId, setSubjGradeId] = useState('')
   const [editingSubj, setEditingSubj] = useState(null)
 
   // Test form
@@ -32,13 +35,15 @@ export default function TeacherDashboard() {
 
   // Expanded subjects
   const [expanded, setExpanded] = useState({})
+  const { confirm, ConfirmDialog } = useConfirm()
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
     try {
       setLoading(true)
-      const [s, t] = await Promise.all([getSubjects(), getTests()])
+      const [g, s, t] = await Promise.all([getGrades(), getSubjects(), getTests()])
+      setGrades(g)
       setSubjects(s)
       setTests(t)
       // auto-expand all
@@ -59,25 +64,31 @@ export default function TeacherDashboard() {
     e.preventDefault()
     if (!subjName.trim()) return alert('Nhập tên môn học!')
     try {
-      const s = await createSubject(subjName.trim(), subjIcon)
+      const s = await createSubject(subjName.trim(), subjIcon, subjGradeId || null)
       setSubjects([...subjects, s])
       setExpanded(e => ({ ...e, [s.id]: true }))
-      setSubjName(''); setSubjIcon('📚'); setShowSubjForm(false)
+      setSubjName(''); setSubjIcon('📚'); setSubjGradeId(''); setShowSubjForm(false)
     } catch (err) { alert('Lỗi: ' + err.message) }
   }
 
   async function handleEditSubject(e) {
     e.preventDefault()
     try {
-      const updated = await updateSubject(editingSubj.id, { name: subjName.trim(), icon: subjIcon })
+      const updated = await updateSubject(editingSubj.id, { name: subjName.trim(), icon: subjIcon, grade_id: subjGradeId || null })
       setSubjects(subjects.map(s => s.id === editingSubj.id ? updated : s))
-      setEditingSubj(null); setSubjName(''); setSubjIcon('📚')
+      setEditingSubj(null); setSubjName(''); setSubjIcon('📚'); setSubjGradeId('')
     } catch (err) { alert('Lỗi: ' + err.message) }
   }
 
   async function handleDeleteSubject(sub) {
     const count = testsOfSubject(sub.id).length
-    if (!confirm(`Xóa môn "${sub.name}"?${count > 0 ? ` (gồm ${count} bài test)` : ''}`)) return
+    const ok = await confirm({
+      title: `Xóa môn "${sub.name}"?`,
+      message: count > 0 ? `Môn học này có ${count} bài test. Tất cả sẽ bị xóa theo.` : 'Hành động này không thể hoàn tác.',
+      confirmText: 'Xóa môn học',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await deleteSubject(sub.id)
       setSubjects(subjects.filter(s => s.id !== sub.id))
@@ -104,7 +115,13 @@ export default function TeacherDashboard() {
   }
 
   async function handleDeleteTest(test) {
-    if (!confirm(`Xóa bài test "${test.title}"?`)) return
+    const ok = await confirm({
+      title: `Xóa bài test?`,
+      message: `"${test.title}" và toàn bộ câu hỏi bên trong sẽ bị xóa vĩnh viễn.`,
+      confirmText: 'Xóa bài test',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await deleteTest(test.id)
       setTests(tests.filter(t => t.id !== test.id))
@@ -124,6 +141,7 @@ export default function TeacherDashboard() {
   async function handleSignOut() { await signOut(); navigate('/') }
 
   return (
+    <>
     <div className="game-wrapper">
       <div className="game-container">
         {/* Header */}
@@ -150,10 +168,19 @@ export default function TeacherDashboard() {
               {editingSubj ? 'Sửa Môn Học' : 'Thêm Môn Học Mới'}
             </h3>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div className="form-group" style={{ flex: '1 1 200px', marginBottom: 0 }}>
+              <div className="form-group" style={{ flex: '1 1 160px', marginBottom: 0 }}>
                 <label>Tên môn</label>
                 <input type="text" className="form-control" value={subjName} onChange={e => setSubjName(e.target.value)}
                   placeholder="VD: Toán học" autoFocus />
+              </div>
+              <div className="form-group" style={{ flex: '0 1 130px', marginBottom: 0 }}>
+                <label>Khối lớp</label>
+                <select className="form-control" value={subjGradeId} onChange={e => setSubjGradeId(e.target.value)}>
+                  <option value="">-- Chưa xếp --</option>
+                  {grades.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>Icon</label>
@@ -171,7 +198,7 @@ export default function TeacherDashboard() {
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button type="submit" className="btn-small btn-success">{editingSubj ? 'Lưu' : 'Tạo'}</button>
-              <button type="button" className="btn-small btn-cancel" onClick={() => { setShowSubjForm(false); setEditingSubj(null); setSubjName(''); setSubjIcon('📚') }}>Hủy</button>
+              <button type="button" className="btn-small btn-cancel" onClick={() => { setShowSubjForm(false); setEditingSubj(null); setSubjName(''); setSubjIcon('📚'); setSubjGradeId('') }}>Hủy</button>
             </div>
           </form>
         )}
@@ -198,12 +225,17 @@ export default function TeacherDashboard() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 24 }}>{sub.icon}</span>
                 <strong style={{ fontSize: 17, color: 'var(--text)' }}>{sub.name}</strong>
+                {sub.grades && (
+                  <span style={{ background: 'var(--primary)', color: 'white', padding: '1px 8px', borderRadius: 20, fontSize: 11, fontWeight: 'bold' }}>
+                    {sub.grades.name}
+                  </span>
+                )}
                 <span style={{ fontSize: 13, color: '#888' }}>({testsOfSubject(sub.id).length} bài test)</span>
                 <span style={{ fontSize: 12, color: '#aaa' }}>{expanded[sub.id] ? '▼' : '▶'}</span>
               </div>
               <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
                 <button className="btn-small btn-edit" style={{ fontSize: 12, padding: '6px 10px' }}
-                  onClick={() => { setEditingSubj(sub); setSubjName(sub.name); setSubjIcon(sub.icon); setShowSubjForm(false) }}>✏️</button>
+                  onClick={() => { setEditingSubj(sub); setSubjName(sub.name); setSubjIcon(sub.icon); setSubjGradeId(sub.grade_id || ''); setShowSubjForm(false) }}>✏️</button>
                 <button className="btn-small" style={{ background: '#dc3545', color: 'white', fontSize: 12, padding: '6px 10px' }}
                   onClick={() => handleDeleteSubject(sub)}>🗑️</button>
               </div>
@@ -292,5 +324,7 @@ export default function TeacherDashboard() {
         ))}
       </div>
     </div>
+    <ConfirmDialog />
+    </>
   )
 }

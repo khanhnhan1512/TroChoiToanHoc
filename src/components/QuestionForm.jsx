@@ -184,9 +184,17 @@ export default function QuestionForm({ testId, question, onSave, onClose }) {
   return (
     <div className="modal-overlay active" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-box">
-        <h2 style={{ color: 'var(--primary)', marginTop: 0, borderBottom: '2px solid #eee', paddingBottom: 10 }}>
-          {isEditing ? 'Chỉnh Sửa Câu Hỏi' : 'Thêm Câu Hỏi Mới'}
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: 10, marginBottom: 16 }}>
+          <h2 style={{ color: 'var(--primary)', margin: 0 }}>
+            {isEditing ? 'Chỉnh Sửa Câu Hỏi' : 'Thêm Câu Hỏi Mới'}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#999', lineHeight: 1, padding: '0 4px' }}
+            title="Đóng"
+          >✕</button>
+        </div>
 
         {/* 1. Loại câu hỏi */}
         <div className="form-group">

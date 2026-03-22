@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getTests, getQuestions, saveQuestion, deleteQuestion } from '../hooks/useTests'
 import QuestionForm from '../components/QuestionForm'
 import AiChatPanel from '../components/AiChatPanel'
+import { useConfirm } from '../components/ConfirmDialog'
 import { generateTriangleSVG, QUESTION_TYPE_LABELS, QUESTION_TYPE_COLORS } from '../lib/gameLogic'
 
 export default function TestEditor() {
@@ -14,6 +15,7 @@ export default function TestEditor() {
   const [showForm, setShowForm] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState(null)
   const [activeTab, setActiveTab] = useState('questions') // 'questions' | 'ai'
+  const { confirm, ConfirmDialog } = useConfirm()
 
   useEffect(() => { loadData() }, [testId])
 
@@ -34,7 +36,13 @@ export default function TestEditor() {
   }
 
   async function handleDelete(q) {
-    if (!confirm(`Xóa câu hỏi: "${q.question_text}"?`)) return
+    const ok = await confirm({
+      title: 'Xóa câu hỏi?',
+      message: `"${q.question_text}"`,
+      confirmText: 'Xóa',
+      danger: true,
+    })
+    if (!ok) return
     await deleteQuestion(q.id)
     setQuestions(questions.filter(x => x.id !== q.id))
   }
@@ -67,6 +75,7 @@ export default function TestEditor() {
   }
 
   return (
+    <>
     <div className="game-wrapper">
       <div className="game-container">
         {/* Header */}
@@ -188,5 +197,7 @@ export default function TestEditor() {
         )}
       </div>
     </div>
+    <ConfirmDialog />
+    </>
   )
 }

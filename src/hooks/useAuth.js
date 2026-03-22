@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, recordLoginTime, isSessionExpiredByAge, clearLoginTime } from '../lib/supabase'
 
 export function useAuth() {
   const [session, setSession] = useState(null)
@@ -7,7 +7,14 @@ export function useAuth() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
+      if (session && isSessionExpiredByAge()) {
+        // Quá 14 ngày kể từ lần login → tự động đăng xuất
+        supabase.auth.signOut()
+        clearLoginTime()
+        setSession(null)
+      } else {
+        setSession(session)
+      }
       setLoading(false)
     })
 
@@ -18,10 +25,16 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const signIn = (email, password) =>
-    supabase.auth.signInWithPassword({ email, password })
+  const signIn = async (email, password) => {
+    const result = await supabase.auth.signInWithPassword({ email, password })
+    if (!result.error) recordLoginTime()
+    return result
+  }
 
-  const signOut = () => supabase.auth.signOut()
+  const signOut = async () => {
+    clearLoginTime()
+    return supabase.auth.signOut()
+  }
 
   return { session, loading, signIn, signOut }
 }

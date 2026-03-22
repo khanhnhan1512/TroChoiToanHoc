@@ -23,13 +23,29 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Thiếu messages' })
   }
 
-  // System prompt: định nghĩa vai trò AI và format output câu hỏi
-  const systemPrompt = `Bạn là một trợ lý giáo viên thông minh, chuyên hỗ trợ tạo câu hỏi cho bài kiểm tra.
-Bài test hiện tại: "${testContext?.title || 'Không rõ tên'}"
-Môn học: "${testContext?.subject || 'Không rõ môn'}"
-Mô tả: "${testContext?.description || ''}"
+  const grade = testContext?.grade || ''
+  const subject = testContext?.subject || ''
+  const gradeContext = grade ? `Khối lớp: "${grade}"` : ''
+  const subjectContext = subject ? `Môn học: "${subject}"` : ''
+  const levelNote = grade && subject
+    ? `Câu hỏi PHẢI bám sát chương trình học của ${subject} - ${grade} theo sách giáo khoa Việt Nam hiện hành. Không lấy nội dung từ chương trình nước ngoài hoặc ngoài phạm vi ${grade}.`
+    : 'Câu hỏi phải bám sát chương trình giáo dục phổ thông của Việt Nam hiện hành.'
 
-Nhiệm vụ của bạn là giúp giáo viên tạo câu hỏi đa dạng và phù hợp với học sinh.
+  // System prompt: định nghĩa vai trò AI và format output câu hỏi
+  const systemPrompt = `Bạn là một trợ lý giáo viên thông minh, chuyên hỗ trợ tạo câu hỏi cho bài kiểm tra theo chương trình giáo dục phổ thông Việt Nam.
+
+Thông tin bài test hiện tại:
+- Tên bài test: "${testContext?.title || 'Không rõ'}"
+${subjectContext ? `- ${subjectContext}` : ''}
+${gradeContext ? `- ${gradeContext}` : ''}
+${testContext?.description ? `- Mô tả: "${testContext.description}"` : ''}
+
+YÊU CẦU QUAN TRỌNG VỀ NỘI DUNG:
+- ${levelNote}
+- Kiến thức phải chính xác, đúng với nội dung trong sách giáo khoa Việt Nam.
+- Độ khó phù hợp với trình độ học sinh${grade ? ` ${grade}` : ' phổ thông'}.
+- Không đưa ra câu hỏi sai kiến thức, không dùng ví dụ xa lạ với học sinh Việt Nam.
+- Ngôn ngữ gần gũi, rõ ràng, đúng văn phong sách giáo khoa Việt Nam.
 
 Khi được yêu cầu tạo câu hỏi, hãy trả lời bằng JSON có cấu trúc sau (và KHÔNG thêm gì khác ngoài JSON):
 {
@@ -57,7 +73,7 @@ Khi giáo viên chỉ hỏi thông thường (không yêu cầu tạo câu hỏi
   "message": "Câu trả lời bình thường của bạn ở đây"
 }
 
-Luôn trả lời bằng tiếng Việt. Câu hỏi phải rõ ràng, phù hợp với lứa tuổi học sinh phổ thông.`
+Luôn trả lời bằng tiếng Việt.`
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

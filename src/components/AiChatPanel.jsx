@@ -68,6 +68,7 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
           testContext: {
             title: test?.title || '',
             subject: test?.subject_name || '',
+            grade: test?.grade_name || '',
             description: test?.description || '',
           },
         }),
