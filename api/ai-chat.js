@@ -25,55 +25,67 @@ export default async function handler(req, res) {
 
   const grade = testContext?.grade || ''
   const subject = testContext?.subject || ''
-  const gradeContext = grade ? `Khối lớp: "${grade}"` : ''
-  const subjectContext = subject ? `Môn học: "${subject}"` : ''
-  const levelNote = grade && subject
-    ? `Câu hỏi PHẢI bám sát chương trình học của ${subject} - ${grade} theo sách giáo khoa Việt Nam hiện hành. Không lấy nội dung từ chương trình nước ngoài hoặc ngoài phạm vi ${grade}.`
-    : 'Câu hỏi phải bám sát chương trình giáo dục phổ thông của Việt Nam hiện hành.'
+  const title = testContext?.title || ''
+  const description = testContext?.description || ''
 
-  // System prompt: định nghĩa vai trò AI và format output câu hỏi
-  const systemPrompt = `Bạn là một trợ lý giáo viên thông minh, chuyên hỗ trợ tạo câu hỏi cho bài kiểm tra theo chương trình giáo dục phổ thông Việt Nam.
+  // Xây dựng mô tả ngữ cảnh bài test
+  const testLabel = [subject, grade].filter(Boolean).join(' - ') || 'Chưa rõ môn/khối'
+  const levelNote = (grade && subject)
+    ? `Mọi câu hỏi PHẢI bám sát chương trình ${subject} ${grade} theo sách giáo khoa Việt Nam hiện hành. Tuyệt đối không dùng kiến thức ngoài phạm vi ${grade} hoặc từ chương trình nước ngoài.`
+    : subject
+      ? `Mọi câu hỏi phải bám sát chương trình môn ${subject} trong sách giáo khoa Việt Nam hiện hành.`
+      : 'Mọi câu hỏi phải bám sát chương trình giáo dục phổ thông Việt Nam hiện hành.'
 
-Thông tin bài test hiện tại:
-- Tên bài test: "${testContext?.title || 'Không rõ'}"
-${subjectContext ? `- ${subjectContext}` : ''}
-${gradeContext ? `- ${gradeContext}` : ''}
-${testContext?.description ? `- Mô tả: "${testContext.description}"` : ''}
+  const systemPrompt = `Bạn là trợ lý giáo viên chuyên tạo câu hỏi kiểm tra theo chương trình giáo dục phổ thông Việt Nam.
 
-YÊU CẦU QUAN TRỌNG VỀ NỘI DUNG:
+=== NGỮ CẢNH BÀI TEST ===
+Tên bài test : "${title || 'Chưa đặt tên'}"
+Môn học      : "${subject || 'Chưa rõ'}"
+Khối lớp     : "${grade || 'Chưa rõ'}"${description ? `\nMô tả        : "${description}"` : ''}
+
+=== RÀNG BUỘC NỘI DUNG (BẮT BUỘC) ===
 - ${levelNote}
-- Kiến thức phải chính xác, đúng với nội dung trong sách giáo khoa Việt Nam.
-- Độ khó phù hợp với trình độ học sinh${grade ? ` ${grade}` : ' phổ thông'}.
-- Không đưa ra câu hỏi sai kiến thức, không dùng ví dụ xa lạ với học sinh Việt Nam.
-- Ngôn ngữ gần gũi, rõ ràng, đúng văn phong sách giáo khoa Việt Nam.
+- Kiến thức phải chính xác theo SGK Việt Nam, không sai lệch về khái niệm, số liệu, tên gọi.
+- Độ khó phù hợp với học sinh${grade ? ` ${grade}` : ' phổ thông'}, không quá dễ cũng không vượt cấp.
+- Dùng tên người, địa danh, đơn vị đo lường quen thuộc với học sinh Việt Nam.
+- Ngôn ngữ rõ ràng, đúng văn phong SGK, không dịch máy.
 
-Khi được yêu cầu tạo câu hỏi, hãy trả lời bằng JSON có cấu trúc sau (và KHÔNG thêm gì khác ngoài JSON):
+=== QUY TẮC TRẢ LỜI ===
+Khi tạo câu hỏi, chỉ trả về JSON (không thêm bất kỳ text nào bên ngoài):
 {
   "questions": [
     {
       "type": "multiple_choice",
-      "question_text": "Câu hỏi ở đây?",
-      "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
+      "question_text": "Nội dung câu hỏi?",
+      "options": ["Phương án A", "Phương án B", "Phương án C", "Phương án D"],
       "answer": "0",
       "hints": ["Gợi ý 1", "Gợi ý 2", "Gợi ý 3"]
     }
   ],
-  "message": "Lời giải thích ngắn gọn về các câu hỏi vừa tạo"
+  "message": "Giải thích ngắn về bộ câu hỏi vừa tạo"
 }
 
 Các loại câu hỏi hợp lệ:
-- "multiple_choice": trắc nghiệm, "options" là mảng string, "answer" là index string ("0","1","2"...)
-- "fill_text": điền đáp án, "answer" là chuỗi đáp án đúng, không cần "options"
-- "true_false": đúng/sai, "answer" là "true" hoặc "false", không cần "options"
-- "ordering": sắp xếp thứ tự, "options" là mảng các mục ĐÃ XÁO TRỘN, "answer" là JSON string của mảng thứ tự đúng VD: "[\"Bước 1\",\"Bước 2\"]"
+- "multiple_choice" : trắc nghiệm — "options" là mảng string, "answer" là index string ("0","1","2"...)
+- "fill_text"       : điền vào chỗ trống — "answer" là chuỗi đáp án đúng, không có "options"
+- "true_false"      : đúng/sai — "answer" là "true" hoặc "false", không có "options"
+- "ordering"        : sắp xếp thứ tự — "options" là mảng ĐÃ XÁO TRỘN, "answer" là JSON string thứ tự đúng, VD: "[\"Bước 1\",\"Bước 2\",\"Bước 3\"]"
 
-Khi giáo viên chỉ hỏi thông thường (không yêu cầu tạo câu hỏi), trả về:
+Khi giáo viên hỏi thông thường (không yêu cầu tạo câu hỏi):
 {
   "questions": [],
-  "message": "Câu trả lời bình thường của bạn ở đây"
+  "message": "Câu trả lời của bạn"
 }
 
 Luôn trả lời bằng tiếng Việt.`
+
+  // Inject nhắc nhở ngữ cảnh vào message user cuối cùng để AI không bị lạc đề
+  const contextReminder = `[Nhắc: Bài test "${title}" — Môn: ${subject || '?'}, Khối: ${grade || '?'}. Câu hỏi phải đúng nội dung SGK Việt Nam cho ${testLabel}.]`
+  const messagesWithContext = messages.map((m, i) =>
+    (i === messages.length - 1 && m.role === 'user')
+      ? { ...m, content: `${contextReminder}\n${m.content}` }
+      : m
+  )
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -86,7 +98,7 @@ Luôn trả lời bằng tiếng Việt.`
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          ...messages,
+          ...messagesWithContext,
         ],
         temperature: 0.7,
         max_tokens: 4000,
