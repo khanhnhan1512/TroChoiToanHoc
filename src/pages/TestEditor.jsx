@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getTests, getQuestions, saveQuestion, deleteQuestion } from '../hooks/useTests'
 import QuestionForm from '../components/QuestionForm'
 import AiChatPanel from '../components/AiChatPanel'
-import { useConfirm } from '../components/ConfirmDialog'
+import { useConfirm, useAlert } from '../components/ConfirmDialog'
 import { generateTriangleSVG, QUESTION_TYPE_LABELS, QUESTION_TYPE_COLORS } from '../lib/gameLogic'
 
 export default function TestEditor() {
@@ -16,6 +16,7 @@ export default function TestEditor() {
   const [editingQuestion, setEditingQuestion] = useState(null)
   const [activeTab, setActiveTab] = useState('questions') // 'questions' | 'ai'
   const { confirm, ConfirmDialog } = useConfirm()
+  const { alert, AlertDialog } = useAlert()
 
   useEffect(() => { loadData() }, [testId])
 
@@ -25,7 +26,7 @@ export default function TestEditor() {
       const [allTests, qs] = await Promise.all([getTests(), getQuestions(testId)])
       setTest(allTests.find(t => t.id === testId))
       setQuestions(qs)
-    } catch (err) { alert('Lỗi: ' + err.message) }
+    } catch (err) { await alert({ title: 'Lỗi', message: err.message, icon: '❌' }) }
     finally { setLoading(false) }
   }
 
@@ -198,6 +199,7 @@ export default function TestEditor() {
       </div>
     </div>
     <ConfirmDialog />
+    <AlertDialog />
     </>
   )
 }

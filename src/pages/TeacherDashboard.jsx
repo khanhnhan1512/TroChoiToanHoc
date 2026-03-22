@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { useConfirm } from '../components/ConfirmDialog'
+import { useConfirm, useAlert } from '../components/ConfirmDialog'
 import {
   getGrades, getSubjects, createSubject, updateSubject, deleteSubject,
   getTests, createTest, updateTest, deleteTest, togglePublish,
@@ -36,6 +36,7 @@ export default function TeacherDashboard() {
   // Expanded subjects
   const [expanded, setExpanded] = useState({})
   const { confirm, ConfirmDialog } = useConfirm()
+  const { alert, AlertDialog } = useAlert()
 
   useEffect(() => { loadAll() }, [])
 
@@ -50,7 +51,7 @@ export default function TeacherDashboard() {
       const ex = {}; s.forEach(sub => ex[sub.id] = true)
       setExpanded(ex)
     } catch (err) {
-      alert('Lỗi tải dữ liệu: ' + err.message)
+      await alert({ title: 'Lỗi tải dữ liệu', message: err.message, icon: '❌' })
     } finally {
       setLoading(false)
     }
@@ -62,13 +63,13 @@ export default function TeacherDashboard() {
   // ==== Subject CRUD ====
   async function handleCreateSubject(e) {
     e.preventDefault()
-    if (!subjName.trim()) return alert('Nhập tên môn học!')
+    if (!subjName.trim()) return alert({ title: 'Thiếu thông tin', message: 'Vui lòng nhập tên môn học.', icon: '⚠️' })
     try {
       const s = await createSubject(subjName.trim(), subjIcon, subjGradeId || null)
       setSubjects([...subjects, s])
       setExpanded(e => ({ ...e, [s.id]: true }))
       setSubjName(''); setSubjIcon('📚'); setSubjGradeId(''); setShowSubjForm(false)
-    } catch (err) { alert('Lỗi: ' + err.message) }
+    } catch (err) { await alert({ title: 'Lỗi', message: err.message, icon: '❌' }) }
   }
 
   async function handleEditSubject(e) {
@@ -77,7 +78,7 @@ export default function TeacherDashboard() {
       const updated = await updateSubject(editingSubj.id, { name: subjName.trim(), icon: subjIcon, grade_id: subjGradeId || null })
       setSubjects(subjects.map(s => s.id === editingSubj.id ? updated : s))
       setEditingSubj(null); setSubjName(''); setSubjIcon('📚'); setSubjGradeId('')
-    } catch (err) { alert('Lỗi: ' + err.message) }
+    } catch (err) { await alert({ title: 'Lỗi', message: err.message, icon: '❌' }) }
   }
 
   async function handleDeleteSubject(sub) {
@@ -93,25 +94,25 @@ export default function TeacherDashboard() {
       await deleteSubject(sub.id)
       setSubjects(subjects.filter(s => s.id !== sub.id))
       setTests(tests.filter(t => t.subject_id !== sub.id))
-    } catch (err) { alert('Lỗi: ' + err.message) }
+    } catch (err) { await alert({ title: 'Lỗi', message: err.message, icon: '❌' }) }
   }
 
   // ==== Test CRUD ====
   async function handleCreateTest(e, subjectId) {
     e.preventDefault()
-    if (!testTitle.trim()) return alert('Nhập tên bài test!')
+    if (!testTitle.trim()) return alert({ title: 'Thiếu thông tin', message: 'Vui lòng nhập tên bài test.', icon: '⚠️' })
     try {
       const t = await createTest(testTitle.trim(), testDesc.trim(), subjectId)
       setTests([t, ...tests])
       setTestTitle(''); setTestDesc(''); setShowTestForm(null)
-    } catch (err) { alert('Lỗi: ' + err.message) }
+    } catch (err) { await alert({ title: 'Lỗi', message: err.message, icon: '❌' }) }
   }
 
   async function handleTogglePublish(test) {
     try {
       const updated = await togglePublish(test.id, test.is_published)
       setTests(tests.map(t => t.id === test.id ? updated : t))
-    } catch (err) { alert('Lỗi: ' + err.message) }
+    } catch (err) { await alert({ title: 'Lỗi', message: err.message, icon: '❌' }) }
   }
 
   async function handleDeleteTest(test) {
@@ -125,7 +126,7 @@ export default function TeacherDashboard() {
     try {
       await deleteTest(test.id)
       setTests(tests.filter(t => t.id !== test.id))
-    } catch (err) { alert('Lỗi: ' + err.message) }
+    } catch (err) { await alert({ title: 'Lỗi', message: err.message, icon: '❌' }) }
   }
 
   async function handleEditTestSave(e) {
@@ -135,7 +136,7 @@ export default function TeacherDashboard() {
       const updated = await updateTest(editingTest.id, { title: editTestTitle.trim(), description: editTestDesc.trim() })
       setTests(tests.map(t => t.id === editingTest.id ? updated : t))
       setEditingTest(null)
-    } catch (err) { alert('Lỗi: ' + err.message) }
+    } catch (err) { await alert({ title: 'Lỗi', message: err.message, icon: '❌' }) }
   }
 
   async function handleSignOut() { await signOut(); navigate('/') }
@@ -325,6 +326,7 @@ export default function TeacherDashboard() {
       </div>
     </div>
     <ConfirmDialog />
+    <AlertDialog />
     </>
   )
 }

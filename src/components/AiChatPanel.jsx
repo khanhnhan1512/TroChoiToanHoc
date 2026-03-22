@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getAiMessages, saveAiMessage, clearAiMessages, saveQuestion } from '../hooks/useTests'
 import { QUESTION_TYPE_LABELS, QUESTION_TYPE_COLORS } from '../lib/gameLogic'
+import { useConfirm, useAlert } from './ConfirmDialog'
 
 export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
   const [messages, setMessages] = useState([])
@@ -8,7 +9,10 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [savedIds, setSavedIds] = useState(new Set())
+  const [savingAll, setSavingAll] = useState(null) // msgIndex đang lưu tất cả
   const bottomRef = useRef(null)
+  const { confirm, ConfirmDialog } = useConfirm()
+  const { alert, AlertDialog } = useAlert()
 
   useEffect(() => {
     loadHistory()
@@ -102,7 +106,7 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
   async function handleSaveQuestion(q, msgIndex, qIndex) {
     const key = `${msgIndex}-${qIndex}`
     try {
-      const question = {
+      await saveQuestion({
         test_id: testId,
         type: q.type,
         question_text: q.question_text,
@@ -110,23 +114,63 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
         answer: String(q.answer),
         hints: q.hints || [],
         sort_order: Date.now(),
-      }
-      await saveQuestion(question)
+      })
       setSavedIds(prev => new Set([...prev, key]))
       onQuestionsAdded?.()
     } catch (err) {
-      alert('Lỗi lưu câu hỏi: ' + err.message)
+      await alert({ title: 'Lỗi lưu câu hỏi', message: err.message, icon: '❌' })
     }
   }
 
+  async function handleSaveAll(questions, msgIndex) {
+    const unsaved = questions.filter((_, j) => !savedIds.has(`${msgIndex}-${j}`))
+    if (!unsaved.length) return
+
+    const ok = await confirm({
+      title: 'Lưu tất cả câu hỏi?',
+      message: `Sẽ lưu ${unsaved.length} câu hỏi chưa được lưu vào bài test.`,
+      confirmText: 'Lưu tất cả',
+    })
+    if (!ok) return
+
+    setSavingAll(msgIndex)
+    let saved = 0
+    for (let j = 0; j < questions.length; j++) {
+      const key = `${msgIndex}-${j}`
+      if (savedIds.has(key)) continue
+      try {
+        await saveQuestion({
+          test_id: testId,
+          type: questions[j].type,
+          question_text: questions[j].question_text,
+          options: questions[j].options || null,
+          answer: String(questions[j].answer),
+          hints: questions[j].hints || [],
+          sort_order: Date.now() + j,
+        })
+        setSavedIds(prev => new Set([...prev, key]))
+        saved++
+      } catch { /* bỏ qua lỗi từng câu, tiếp tục */ }
+    }
+    setSavingAll(null)
+    onQuestionsAdded?.()
+    await alert({ title: 'Đã lưu xong!', message: `${saved}/${unsaved.length} câu hỏi đã được lưu vào bài test.`, icon: '✅' })
+  }
+
   async function handleClear() {
-    if (!confirm('Xóa toàn bộ lịch sử chat với AI cho bài test này?')) return
+    const ok = await confirm({
+      title: 'Xóa lịch sử chat?',
+      message: 'Toàn bộ cuộc trò chuyện với AI của bài test này sẽ bị xóa vĩnh viễn.',
+      confirmText: 'Xóa lịch sử',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await clearAiMessages(testId)
       setMessages([])
       setSavedIds(new Set())
     } catch (err) {
-      alert('Lỗi xóa lịch sử: ' + err.message)
+      await alert({ title: 'Lỗi', message: err.message, icon: '❌' })
     }
   }
 
@@ -205,6 +249,18 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
               {/* Question cards */}
               {msg.role === 'assistant' && msg.questions?.length > 0 && (
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {/* Save all button */}
+                  {msg.questions.some((_, j) => !savedIds.has(`${i}-${j}`)) && (
+                    <button
+                      className="btn-small btn-success"
+                      style={{ alignSelf: 'flex-start', fontSize: 12 }}
+                      onClick={() => handleSaveAll(msg.questions, i)}
+                      disabled={savingAll === i}
+                    >
+                      {savingAll === i ? '⏳ Đang lưu...' : `💾 Lưu tất cả (${msg.questions.filter((_, j) => !savedIds.has(`${i}-${j}`)).length} câu)`}
+                    </button>
+                  )}
+
                   {msg.questions.map((q, j) => {
                     const key = `${i}-${j}`
                     const isSaved = savedIds.has(key)
@@ -264,7 +320,7 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
                           onClick={() => !isSaved && handleSaveQuestion(q, i, j)}
                           disabled={isSaved}
                         >
-                          {isSaved ? '✅ Đã lưu' : '💾 Lưu vào bài test'}
+                          {isSaved ? '✅ Đã lưu' : '💾 Lưu câu này'}
                         </button>
                       </div>
                     )
@@ -333,6 +389,9 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
           ➤
         </button>
       </div>
+
+      <ConfirmDialog />
+      <AlertDialog />
     </div>
   )
 }
