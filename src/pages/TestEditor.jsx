@@ -184,14 +184,14 @@ export default function TestEditor() {
           )
         )}
 
-        {/* Tab: AI Chat */}
-        {activeTab === 'ai' && (
+        {/* Tab: AI Chat — dùng visibility thay vì unmount để giữ state loading */}
+        <div style={{ display: activeTab === 'ai' ? 'block' : 'none' }}>
           <AiChatPanel
             testId={testId}
             test={test}
             onQuestionsAdded={loadData}
           />
-        )}
+        </div>
 
         {showForm && (
           <QuestionForm testId={testId} question={editingQuestion} onSave={handleSave} onClose={closeForm} />

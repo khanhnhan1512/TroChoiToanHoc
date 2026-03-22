@@ -3,6 +3,19 @@ import { getAiMessages, saveAiMessage, clearAiMessages, saveQuestion } from '../
 import { QUESTION_TYPE_LABELS, QUESTION_TYPE_COLORS } from '../lib/gameLogic'
 import { useConfirm, useAlert } from './ConfirmDialog'
 
+// Strip markdown code fences và parse JSON an toàn
+function parseAiJson(raw) {
+  try {
+    const stripped = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim()
+    return JSON.parse(stripped)
+  } catch {
+    return null
+  }
+}
+
 export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -30,12 +43,11 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
       // We need to parse assistant messages back to { text, questions }
       const parsed = rows.map(row => {
         if (row.role === 'assistant') {
-          try {
-            const data = JSON.parse(row.content)
-            return { role: 'assistant', text: data.message || '', questions: data.questions || [], rawContent: row.content }
-          } catch {
-            return { role: 'assistant', text: row.content, questions: [], rawContent: row.content }
+          const data = parseAiJson(row.content)
+          if (data) {
+            return { role: 'assistant', text: data.message || '', questions: data.questions || [] }
           }
+          return { role: 'assistant', text: row.content, questions: [] }
         }
         return { role: 'user', text: row.content }
       })
@@ -84,17 +96,21 @@ export default function AiChatPanel({ testId, test, onQuestionsAdded }) {
       }
 
       const data = await res.json()
+      // data đã được parse ở server, nhưng đề phòng server trả về raw string
+      const normalized = (data && typeof data === 'object' && 'questions' in data)
+        ? data
+        : (parseAiJson(JSON.stringify(data)) || { questions: [], message: String(data) })
+
       const assistantMsg = {
         role: 'assistant',
-        text: data.message || '',
-        questions: data.questions || [],
-        rawContent: JSON.stringify(data),
+        text: normalized.message || '',
+        questions: normalized.questions || [],
       }
 
       setMessages(prev => [...prev, assistantMsg])
 
-      // Save assistant message to DB (store full JSON so we can reconstruct later)
-      await saveAiMessage(testId, 'assistant', JSON.stringify(data))
+      // Lưu vào DB dưới dạng JSON chuẩn (không có code fence)
+      await saveAiMessage(testId, 'assistant', JSON.stringify(normalized))
     } catch (err) {
       const errMsg = { role: 'assistant', text: '❌ Lỗi: ' + err.message, questions: [] }
       setMessages(prev => [...prev, errMsg])

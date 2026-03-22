@@ -115,14 +115,18 @@ Luôn trả lời bằng tiếng Việt.`
     const data = await response.json()
     const rawContent = data.choices?.[0]?.message?.content || ''
 
-    // Parse JSON từ response AI
+    // Parse JSON từ response AI — xử lý có/không có markdown code fence
     let parsed
     try {
-      // AI đôi khi wrap trong markdown code block, xử lý cả 2 trường hợp
-      const jsonStr = rawContent.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim()
+      const jsonStr = rawContent
+        .replace(/^```(?:json)?\s*/i, '')  // strip ```json hoặc ``` ở đầu
+        .replace(/\s*```\s*$/i, '')         // strip ``` ở cuối
+        .trim()
       parsed = JSON.parse(jsonStr)
+      // Đảm bảo luôn có đủ 2 field
+      if (!Array.isArray(parsed.questions)) parsed.questions = []
+      if (typeof parsed.message !== 'string') parsed.message = ''
     } catch {
-      // Nếu không parse được → coi như message thông thường không có câu hỏi
       parsed = { questions: [], message: rawContent }
     }
 
