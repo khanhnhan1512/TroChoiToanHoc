@@ -65,6 +65,7 @@ export default function TestPlayer() {
   const [timeElapsed, setTimeElapsed] = useState(0)
   const timerRef = useRef(null)
   const [soundOn, setSoundOn] = useState(true)
+  const [volume, setVolume] = useState(0.3)
   const bgmRef = useRef(null)
   const musicStarted = useRef(false)
   const [shake, setShake] = useState(false)
@@ -178,6 +179,14 @@ export default function TestPlayer() {
     if (bgmRef.current) { if (v && musicStarted.current) bgmRef.current.play().catch(() => {}); else bgmRef.current.pause() }
   }
 
+  function handleVolumeChange(e) {
+    const v = parseFloat(e.target.value)
+    setVolume(v)
+    if (bgmRef.current) bgmRef.current.volume = v
+    if (v === 0) setSoundOn(false)
+    else if (!soundOn) { setSoundOn(true); if (musicStarted.current) bgmRef.current.play().catch(() => {}) }
+  }
+
   // Ordering: move item
   function moveOrder(fromIdx, toIdx) {
     if (toIdx < 0 || toIdx >= orderList.length) return
@@ -191,9 +200,19 @@ export default function TestPlayer() {
 
   return (
     <div className="game-wrapper">
-      <audio ref={bgmRef} loop><source src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3" type="audio/mpeg" /></audio>
+      <audio ref={bgmRef} loop onCanPlay={e => { e.target.volume = volume }}><source src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3" type="audio/mpeg" /></audio>
       <div className={`game-container${shake ? ' shake' : ''}`}>
-        <div className="sound-controls"><button className="sound-btn" onClick={toggleSound}>{soundOn ? '🔊' : '🔇'}</button></div>
+        <div className="sound-controls" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button className="sound-btn" onClick={toggleSound} title={soundOn ? 'Tắt âm' : 'Bật âm'}>
+            {volume === 0 || !soundOn ? '🔇' : volume < 0.4 ? '🔉' : '🔊'}
+          </button>
+          <input
+            type="range" min={0} max={1} step={0.05} value={soundOn ? volume : 0}
+            onChange={handleVolumeChange}
+            style={{ width: 70, accentColor: 'var(--primary)', cursor: 'pointer' }}
+            title={`Âm lượng: ${Math.round((soundOn ? volume : 0) * 100)}%`}
+          />
+        </div>
         <button className="mode-switch" onClick={() => navigate('/')}>🏠 Về trang chủ</button>
         <h1>🐪 MẬT MÃ KIM TỰ THÁP 🐪</h1>
         {test && <p style={{ color: 'var(--secondary)', fontWeight: 'bold', marginTop: -10 }}>{test.title}</p>}
@@ -228,6 +247,10 @@ export default function TestPlayer() {
 
             <div className="question-card">
               <div className="question-text"><b>Câu {currentIndex + 1}:</b> {q.question_text}</div>
+              {q.question_image && (
+                <img src={q.question_image} alt="Hình đề bài"
+                  style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 10, margin: '10px auto 4px', display: 'block', border: '2px solid #eee' }} />
+              )}
 
               {/* ===== MULTIPLE CHOICE ===== */}
               {q.type === 'multiple_choice' && q.options && (

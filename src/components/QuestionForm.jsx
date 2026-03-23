@@ -49,6 +49,16 @@ export default function QuestionForm({ testId, question, onSave, onClose }) {
   const [inputAnswer, setInputAnswer] = useState(question?.answer || '')
   const [explanationKey, setExplanationKey] = useState(question?.explanation_key || 'tong3goc')
 
+  // === ảnh minh hoạ đề bài (dùng chung tất cả loại) ===
+  const [questionImage, setQuestionImage] = useState(question?.question_image || null)
+
+  async function handleQuestionImageChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const b64 = await processImageFile(file)
+    if (b64) setQuestionImage(b64)
+  }
+
   // Init from question when editing
   useEffect(() => {
     if (!question) return
@@ -102,6 +112,7 @@ export default function QuestionForm({ testId, question, onSave, onClose }) {
         image_mode: null,
         triangle_type: null,
         options: null,
+        question_image: questionImage || null,
       }
       if (isEditing) qData.id = question.id
 
@@ -222,6 +233,20 @@ export default function QuestionForm({ testId, question, onSave, onClose }) {
               : 'VD: Góc A = 60°, góc B = 40°. Tính góc C?'
             }
           />
+        </div>
+
+        {/* 2b. Ảnh minh hoạ đề bài (tùy chọn) */}
+        <div className="form-group">
+          <label>Ảnh minh hoạ đề bài <span style={{ fontWeight: 'normal', color: '#888', fontSize: 13 }}>(tùy chọn)</span></label>
+          <input type="file" accept="image/*" className="form-control" style={{ padding: 5 }}
+            onChange={handleQuestionImageChange} />
+          {questionImage && (
+            <div style={{ marginTop: 8, position: 'relative', display: 'inline-block' }}>
+              <img src={questionImage} alt="Ảnh đề bài" style={{ maxHeight: 140, maxWidth: '100%', borderRadius: 8, border: '2px solid #d0e3f7' }} />
+              <button type="button" onClick={() => setQuestionImage(null)}
+                style={{ position: 'absolute', top: -8, right: -8, background: '#dc3545', color: 'white', border: 'none', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 14, lineHeight: '24px', textAlign: 'center', padding: 0 }}>✕</button>
+            </div>
+          )}
         </div>
 
         {/* 3. Đáp án theo loại */}
