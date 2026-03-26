@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getTests, getQuestions } from '../hooks/useTests'
 import { buildSessionQuestions, generateTriangleSVG, formatTime, evaluateAnswer, QUESTION_TYPE_LABELS } from '../lib/gameLogic'
+import { useConfirm } from '../components/ConfirmDialog'
 
 // ===== AUDIO =====
 let audioCtx = null
@@ -52,6 +53,9 @@ export default function TestPlayer() {
   const [wrongAttempts, setWrongAttempts] = useState(0)
   const [totalScore, setTotalScore] = useState(0)
   const [conceptMistakes, setConceptMistakes] = useState({})
+  const [wrongList, setWrongList] = useState([]) // [{q, userAns}]
+
+  const { confirm, ConfirmDialog } = useConfirm()
 
   // Universal answer states
   const [userAnswer, setUserAnswer] = useState('')        // string for mc/fill/tf/input
@@ -93,7 +97,7 @@ export default function TestPlayer() {
     if (soundOn && !musicStarted.current && bgmRef.current) { bgmRef.current.play().catch(() => {}); musicStarted.current = true }
     const qs = buildSessionQuestions(allQuestions)
     if (!qs.length) return alert('Bài test chưa có câu hỏi!')
-    setSessionQs(qs); setCurrentIndex(0); setTotalScore(0); setConceptMistakes({}); setWrongAttempts(0)
+    setSessionQs(qs); setCurrentIndex(0); setTotalScore(0); setConceptMistakes({}); setWrongAttempts(0); setWrongList([])
     setFeedback({ show: false, type: '', msg: '' }); setTimeElapsed(0); setScreen('play')
     clearInterval(timerRef.current); timerRef.current = setInterval(() => setTimeElapsed(t => t + 1), 1000)
   }
@@ -162,6 +166,8 @@ export default function TestPlayer() {
       const nw = wrongAttempts + 1; setWrongAttempts(nw)
       const mistakeKey = q.explanation_key || q.type
       setConceptMistakes(m => ({ ...m, [mistakeKey]: true }))
+      // Ghi nhận câu sai lần đầu (chỉ lần đầu sai)
+      if (nw === 1) setWrongList(prev => prev.find(w => w.q.id === q.id) ? prev : [...prev, { q, userAns: ans }])
       soundError(soundOn); setShake(true); setTimeout(() => setShake(false), 500)
       const prefix = !isCorrect ? '❌ <b>Sai rồi:</b> ' : '❌ <b>Giải thích chưa chuẩn:</b> '
       const hintMsg = q.hints?.[Math.min(nw - 1, 2)] || 'Hãy suy nghĩ kỹ hơn nhé!'
@@ -177,6 +183,21 @@ export default function TestPlayer() {
   function toggleSound() {
     const v = !soundOn; setSoundOn(v)
     if (bgmRef.current) { if (v && musicStarted.current) bgmRef.current.play().catch(() => {}); else bgmRef.current.pause() }
+  }
+
+  async function handleGoHome() {
+    if (screen === 'play') {
+      const ok = await confirm({
+        title: 'Thoát bài test?',
+        message: 'Tiến trình hiện tại sẽ bị mất. Bạn có chắc muốn về trang chủ không?',
+        confirmText: 'Thoát',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    clearInterval(timerRef.current)
+    if (bgmRef.current) bgmRef.current.pause()
+    navigate('/')
   }
 
   function handleVolumeChange(e) {
@@ -199,6 +220,7 @@ export default function TestPlayer() {
   const q = sessionQs[currentIndex]
 
   return (
+    <>
     <div className="game-wrapper">
       <audio ref={bgmRef} loop onCanPlay={e => { e.target.volume = volume }}><source src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3" type="audio/mpeg" /></audio>
       <div className={`game-container${shake ? ' shake' : ''}`}>
@@ -213,7 +235,7 @@ export default function TestPlayer() {
             title={`Âm lượng: ${Math.round((soundOn ? volume : 0) * 100)}%`}
           />
         </div>
-        <button className="mode-switch" onClick={() => navigate('/')}>🏠 Về trang chủ</button>
+        <button className="mode-switch" onClick={handleGoHome}>🏠 Về trang chủ</button>
         <h1>🐪 MẬT MÃ KIM TỰ THÁP 🐪</h1>
         {test && <p style={{ color: 'var(--secondary)', fontWeight: 'bold', marginTop: -10 }}>{test.title}</p>}
 
@@ -383,28 +405,65 @@ export default function TestPlayer() {
                 </div>
               </div>
 
-              {Object.keys(conceptMistakes).length === 0 ? (
+              {wrongList.length === 0 ? (
                 <div className="ai-box" style={{ background: '#e3f2fd', borderColor: '#42a5f5' }}>
                   <div className="ai-avatar">🤖</div>
                   <div className="ai-bubble"><b>Hoàn hảo!</b> Em trả lời đúng ngay lần đầu tất cả! 🏆</div>
                 </div>
               ) : (
-                <div className="ai-box" style={{ background: '#fff3e0', borderColor: '#ff9800', flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 15, marginBottom: 10 }}>
+                <>
+                  <div className="ai-box" style={{ background: '#fff3e0', borderColor: '#ff9800' }}>
                     <div className="ai-avatar" style={{ animation: 'none' }}>🤖</div>
-                    <div className="ai-bubble"><b>Em làm rất tốt!</b> Hãy ôn lại những phần bị nhầm để lần sau lấy trọn điểm nhé!</div>
+                    <div className="ai-bubble"><b>Em làm rất tốt!</b> Ôn lại {wrongList.length} câu bị nhầm dưới đây để lần sau lấy trọn điểm nhé!</div>
                   </div>
-                </div>
+
+                  {/* Review câu sai */}
+                  <div style={{ marginTop: 16 }}>
+                    <h3 style={{ color: 'var(--error)', margin: '0 0 12px', fontSize: 16 }}>📋 Xem lại câu trả lời sai:</h3>
+                    {wrongList.map(({ q }, idx) => (
+                      <div key={q.id} style={{ background: '#fff8f8', border: '2px solid #f5c6cb', borderRadius: 10, padding: '12px 14px', marginBottom: 10, textAlign: 'left' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                          <span style={{ background: '#dc3545', color: 'white', borderRadius: '50%', width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 13, flexShrink: 0 }}>{idx + 1}</span>
+                          <span style={{ fontWeight: 'bold', fontSize: 14, color: 'var(--text)' }}>{q.question_text}</span>
+                        </div>
+
+                        {/* Hiển thị đáp án đúng theo từng loại */}
+                        <div style={{ fontSize: 13, background: '#e8f5e9', border: '1px solid #a5d6a7', borderRadius: 6, padding: '6px 10px' }}>
+                          <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>✅ Đáp án đúng: </span>
+                          {q.type === 'multiple_choice' && q.options && (
+                            <span>{String.fromCharCode(65 + parseInt(q.answer))}. {q.options[parseInt(q.answer)]}</span>
+                          )}
+                          {q.type === 'fill_text' && <span>"{q.answer}"</span>}
+                          {q.type === 'true_false' && <span>{q.answer === 'true' ? 'Đúng' : 'Sai'}</span>}
+                          {q.type === 'ordering' && (() => {
+                            try { return <span>{JSON.parse(q.answer).join(' → ')}</span> } catch { return <span>{q.answer}</span> }
+                          })()}
+                          {q.type === 'image' && <span>[Hình đáp án]</span>}
+                          {q.type === 'input' && <span>{q.answer}°</span>}
+                        </div>
+
+                        {/* Gợi ý cuối nếu có */}
+                        {q.hints?.[2] && (
+                          <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+                            💡 {q.hints[2]}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
 
               <div style={{ textAlign: 'center', marginTop: 20, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <button className="btn-action" onClick={startGame}>CHƠI LẠI 🔄</button>
-                <button className="btn-action" style={{ background: 'var(--secondary)', boxShadow: '0 8px 0 #1a7f9e' }} onClick={() => navigate('/')}>Chọn bài khác 📋</button>
+                <button className="btn-action" style={{ background: 'var(--secondary)', boxShadow: '0 8px 0 #1a7f9e' }} onClick={handleGoHome}>Chọn bài khác 📋</button>
               </div>
             </div>
           </div>
         )}
       </div>
     </div>
+    <ConfirmDialog />
+    </>
   )
 }
